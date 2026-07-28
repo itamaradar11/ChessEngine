@@ -4,12 +4,14 @@
 #include <string>
 #include <cstdint>
 
+constexpr int MAX_MOVES = 256;
+
 using Bitboard = std::uint64_t;
 
-enum Color {WHITE, BLACK};
+enum Color : std::uint8_t {WHITE, BLACK};
 //enum PieceType {PAWN, KNIGHT, BISHOP, QUEEN, KING, NONE};
-enum ColoredPieceType {WHITE_PAWN, WHITE_KNIGHT, WHITE_BISHOP, WHITE_ROOK, WHITE_QUEEN, WHITE_KING, BLACK_PAWN, BLACK_KNIGHT, BLACK_BISHOP, BLACK_ROOK, BLACK_QUEEN, BLACK_KING, NONE_PEICE};
-enum Square : int {
+enum ColoredPieceType : std::uint8_t {WHITE_PAWN, WHITE_KNIGHT, WHITE_BISHOP, WHITE_ROOK, WHITE_QUEEN, WHITE_KING, BLACK_PAWN, BLACK_KNIGHT, BLACK_BISHOP, BLACK_ROOK, BLACK_QUEEN, BLACK_KING, NONE_PEICE};
+enum Square : std::uint8_t {
     A1, A2, A3, A4, A5, A6, A7, A8,
     B1, B2, B3, B4, B5, B6, B7, B8,
     C1, C2, C3, C4, C5, C6, C7, C8,
@@ -19,6 +21,15 @@ enum Square : int {
     G1, G2, G3, G4, G5, G6, G7, G8,
     H1, H2, H3, H4, H5, H6, H7, H8,
     NONE_SQUARE
+};
+enum MoveFlag : std::uint8_t {QUIET, DOUBLE_PAWN_PUSH, KING_CASTLE, QUEEN_CASTLE, CAPTURE, EN_PASSANT, PROMOTION, CAPTURE_PROMOTION};
+
+struct Move
+{
+    Square from; //piece currently in 'from'
+    Square to; //move it to 'to'
+    ColoredPieceType promotion_piece; //if move is a promotion, to what should promote
+    MoveFlag flag; //flag for special moves
 };
 
 ColoredPieceType char_to_piece(char c);
