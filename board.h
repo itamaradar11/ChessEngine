@@ -11,8 +11,8 @@ public:
     ColoredPieceType get_piece_at(Square sq, Color color);
     void load_fen(const std::string& fen);
     void print_board();
-    void make_move(const Move& move);
-    void unmake_move(const Move& move);
+    void make_move(const Move& move, StateInfo& state);
+    void unmake_move(const Move& move, const StateInfo& state);
     Move search_best_move();
     int search_max(int depth, int alpha, int beta);
     int search_min(int depth, int alpha, int beta);
@@ -30,6 +30,7 @@ private:
     int half_moves;
     int full_moves;
     Color engine_color;
+    StateInfo states[MAX_DEPTH];
 };
 
 #endif

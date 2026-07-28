@@ -192,7 +192,7 @@ void Board::print_board(){
     for(int rank = 0; rank < 8; rank++){
         for(int file = 0; file < 8; file++){
             Square sq = calc_square(file, rank);
-            ColoredPieceType peice = get_peice_at(sq);
+            ColoredPieceType peice = get_piece_at(sq);
 
             switch (peice)
             {
@@ -246,7 +246,13 @@ void Board::print_board(){
     " | en passant: " << static_cast<int>(en_passant_square) << " | halfmoves: " << half_moves << " | fullmoves " << full_moves << std::endl;
 }
 
-void Board::make_move(const Move& move){
+void Board::make_move(const Move& move, StateInfo& state){
+    //save state
+    state.castling_rights = castling_rights;
+    state.en_passant_square = en_passant_square;
+    state.half_moves = half_moves;
+    //wont save captured_piece by default (only for relevant move.flag)
+
     if(side_to_move==BLACK)
         ++full_moves;
 
@@ -285,6 +291,7 @@ void Board::make_move(const Move& move){
         side_to_move = static_cast<Color>(side_to_move ^ 1);
         half_moves = 0;
         en_passant_square = NONE_SQUARE;
+        state.captured_piece = captured_piece;
         return;
     }
 
@@ -368,6 +375,7 @@ void Board::make_move(const Move& move){
         half_moves = 0;
         en_passant_square = NONE_SQUARE;
         side_to_move = static_cast<Color>(side_to_move ^ 1);
+        state.captured_piece = captured_piece;
 
         //update castling right of the captured side
         if(captured_piece == WHITE_ROOK){
@@ -443,6 +451,7 @@ void Board::make_move(const Move& move){
         half_moves = 0;
         en_passant_square = NONE_SQUARE;
         side_to_move = static_cast<Color>(side_to_move ^ 1);
+        state.captured_piece = captured_piece;
 
         //update castling right of the captured side
         if(captured_piece == WHITE_ROOK){
@@ -510,6 +519,166 @@ void Board::make_move(const Move& move){
     }
 }
 
+void Board::unmake_move(const Move& move, const StateInfo& state){
+    if(side_to_move == WHITE)
+        --full_moves;
+    //restore state
+    half_moves = state.half_moves;
+    en_passant_square = state.en_passant_square;
+    castling_rights = state.castling_rights;
+
+    if(move.flag == DOUBLE_PAWN_PUSH){
+        //update pawn board
+        ColoredPieceType pawn_type = side_to_move == WHITE ? BLACK_PAWN : WHITE_PAWN;
+        piece_boards[pawn_type] = (piece_boards[pawn_type] & ~(1ULL << move.to)) | (1ULL << move.from);
+        //update other boards
+        Color other_side = static_cast<Color>(side_to_move ^ 1);
+        colored_boards[other_side] = (colored_boards[other_side] & ~(1ULL << move.to)) | (1ULL << move.from);
+        occupied_board = ((occupied_board) & ~(1ULL << move.to)) | (1ULL << move.from);
+        //update side
+        side_to_move = static_cast<Color>(side_to_move ^ 1);
+        return;
+    }
+
+    if(move.flag == EN_PASSANT){
+        //calculate where is the piece we capture
+        Square captured_square = side_to_move == BLACK ? static_cast<Square>(move.to - 1) : static_cast<Square>(move.to + 1);
+
+        Color other_side = static_cast<Color>(side_to_move ^ 1); //side that moved when was performing the move
+        ColoredPieceType pawn_type = other_side == WHITE ? WHITE_PAWN : BLACK_PAWN;
+
+        //update capturing side
+        piece_boards[pawn_type] = (piece_boards[pawn_type] & ~(1ULL << move.to)) | (1ULL << move.from);
+        colored_boards[other_side] = (colored_boards[other_side] & ~(1ULL << move.to)) | (1ULL << move.from);
+
+        //update captured side
+        piece_boards[state.captured_piece] |= 1ULL << captured_square;
+        colored_boards[side_to_move] |= 1ULL << captured_square;
+
+        occupied_board = (occupied_board & ~(1ULL << move.to)) | (1ULL << move.from) | (1ULL << captured_square);
+        
+        //update side and half-moves
+        side_to_move = static_cast<Color>(side_to_move ^ 1);
+        return;
+    }
+
+    if(move.flag == KING_CASTLE){
+        if(side_to_move == BLACK){ //i.e. white was the one doing the castling
+            //king: E1 -> G1 (flip it)
+            piece_boards[WHITE_KING] = (piece_boards[WHITE_KING] & ~(1ULL << G1)) | (1ULL << E1);
+            //rook: H1 -> F1 (flip it)
+            piece_boards[WHITE_ROOK] = (piece_boards[WHITE_ROOK] & ~(1ULL << F1)) | (1ULL << H1);
+            //update boards
+            colored_boards[WHITE] = (colored_boards[WHITE] & ~(1ULL << G1) & ~(1ULL << F1)) | (1ULL << E1) | (1ULL << H1);
+            occupied_board = (occupied_board & ~(1ULL << G1) & ~(1ULL << F1)) | (1ULL << E1) | (1ULL << H1);
+        }
+        else{
+            //king: E8 -> G8 (flip it)
+            piece_boards[BLACK_KING] = (piece_boards[BLACK_KING] & ~(1ULL << G8)) | (1ULL << E8);
+            //rook: H8 -> F8 (flip it)
+            piece_boards[BLACK_ROOK] = (piece_boards[BLACK_ROOK] & ~(1ULL << F8)) | (1ULL << H8);
+            //update boards
+            colored_boards[BLACK] = (colored_boards[BLACK] & ~(1ULL << G8) & ~(1ULL << F8)) | (1ULL << E8) | (1ULL << H8);
+            occupied_board = (occupied_board & ~(1ULL << G8) & ~(1ULL << F8)) | (1ULL << E8) | (1ULL << H8);
+        }
+
+        //update side
+        side_to_move = static_cast<Color>(side_to_move ^ 1);
+        return;
+    }
+
+    if(move.flag == QUEEN_CASTLE){
+        if(side_to_move == BLACK){ //i.e. white was the one doing the castling
+           //king: E1 -> C1 (flip it)
+            piece_boards[WHITE_KING] = (piece_boards[WHITE_KING] & ~(1ULL << C1)) | (1ULL << E1);
+            //rook: A1 -> D1 (flip it)
+            piece_boards[WHITE_ROOK] = (piece_boards[WHITE_ROOK] & ~(1ULL << D1)) | (1ULL << A1);
+            //update boards
+            colored_boards[WHITE] = (colored_boards[WHITE] & ~(1ULL << C1) & ~(1ULL << D1)) | (1ULL << E1) | (1ULL << A1);
+            occupied_board = (occupied_board & ~(1ULL << C1) & ~(1ULL << D1)) | (1ULL << E1) | (1ULL << A1);
+        }
+        else{
+            //king: E8 -> C8 (flip it)
+            piece_boards[BLACK_KING] = (piece_boards[BLACK_KING] & ~(1ULL << C8)) | (1ULL << E8);
+            //rook: A8 -> D8 (flip it)
+            piece_boards[BLACK_ROOK] = (piece_boards[BLACK_ROOK] & ~(1ULL << D8)) | (1ULL << A8);
+            //update boards
+            colored_boards[BLACK] = (colored_boards[BLACK] & ~(1ULL << C8) & ~(1ULL << D8)) | (1ULL << E8) | (1ULL << A8);
+            occupied_board = (occupied_board & ~(1ULL << C8) & ~(1ULL << D8)) | (1ULL << E8) | (1ULL << A8);
+        }
+    
+        //update side
+        side_to_move = static_cast<Color>(side_to_move ^ 1);
+        return;
+    }
+
+    if(move.flag == CAPTURE){
+        Color capturing_side = static_cast<Color>(side_to_move ^ 1); //side that was doing the move
+        ColoredPieceType capturing_piece = get_piece_at(move.to, capturing_side);
+        //update capturing side's board
+        piece_boards[capturing_piece] = (piece_boards[capturing_piece] & ~(1ULL << move.to)) | (1ULL << move.from);
+        colored_boards[capturing_side] = (colored_boards[capturing_side] & ~(1ULL << move.to)) | (1ULL << move.from);
+        //captured side's boards
+        piece_boards[state.captured_piece] |= 1ULL << move.to;
+        colored_boards[side_to_move] |= 1ULL << move.to;
+
+        occupied_board |= 1ULL << move.from;
+
+        //update side
+        side_to_move = static_cast<Color>(side_to_move ^ 1);
+        return;
+    }
+
+    if(move.flag == PROMOTION){
+        //side that did the move
+        Color other_side = static_cast<Color>(side_to_move ^ 1);
+        //update pawn board
+        ColoredPieceType pawn_type = other_side == WHITE ? WHITE_PAWN : BLACK_PAWN;
+        piece_boards[pawn_type] |= 1ULL << move.from;
+        //update promotion piece board
+        piece_boards[move.promotion_piece] &= ~(1ULL << move.to);
+        //update color board
+        colored_boards[other_side] = (colored_boards[other_side] & ~(1ULL << move.to)) | (1ULL << move.from);
+        occupied_board = (occupied_board & ~(1ULL << move.to)) | (1ULL << move.from);
+        //update side
+        side_to_move = static_cast<Color>(side_to_move ^ 1);
+        return;
+    }
+
+    if(move.flag == CAPTURE_PROMOTION){
+        Color capturing_side = static_cast<Color>(side_to_move ^ 1);
+        ColoredPieceType capturing_piece = capturing_side == WHITE ? WHITE_PAWN : BLACK_PAWN;
+
+        //boards of the capturing side (pawn + promotion)
+        piece_boards[capturing_piece] |= 1ULL << move.from; //the pawn is added back to the board (promotion)
+        piece_boards[move.promotion_piece] &= ~(1ULL << move.to); //remove promotion piece
+        colored_boards[capturing_side] = (colored_boards[capturing_side] & ~(1ULL << move.to)) | (1ULL << move.from);
+        //boards of captured side
+        piece_boards[state.captured_piece] |= 1ULL << move.to;
+        colored_boards[side_to_move] |= 1ULL << move.to;
+
+        occupied_board |= 1ULL << move.from;
+
+        //update side
+        side_to_move = static_cast<Color>(side_to_move ^ 1);
+        return;
+    }
+
+    if(move.flag == QUIET){
+        Color other_side = static_cast<Color>(side_to_move ^ 1); //side that did the move
+        ColoredPieceType piece = get_piece_at(move.to, other_side);
+
+        //update boards
+        piece_boards[piece] = (piece_boards[piece] & ~(1ULL << move.to)) | (1ULL << move.from);
+        colored_boards[other_side] = (colored_boards[other_side] & ~(1ULL << move.to)) | (1ULL << move.from);
+        occupied_board = (occupied_board & ~(1ULL << move.to)) | (1ULL << move.from);
+
+        //update side
+        side_to_move = static_cast<Color>(side_to_move ^ 1);
+        return;
+    }
+}
+
 int Board::search_max(int depth, int alpha, int beta){
     //leaf
     if(depth == 0){
@@ -523,9 +692,9 @@ int Board::search_max(int depth, int alpha, int beta){
     while(generator.step(move)){ //while MoveGenerator still has moves
 
         //try this move
-        make_move(move);
+        make_move(move, states[depth]);
         int score = search_min(depth - 1, alpha, beta);
-        unmake_move(move);
+        unmake_move(move, states[depth]);
 
         //alpha-beta pruning. parent node (minimizer) already found a move that gives a lower score
         if(score >= beta){ 
@@ -554,9 +723,9 @@ int Board::search_min(int depth, int alpha, int beta){
     while(generator.step(move)){ //while MoveGenerator still has moves
 
         //try this move
-        make_move(move);
+        make_move(move, states[depth]);
         int score = search_max(depth - 1, alpha, beta);
-        unmake_move(move);
+        unmake_move(move, states[depth]);
 
         //alpha-beta pruning. parent node (minimizer) already found a move that gives a lower score
         if(score <= alpha){ 

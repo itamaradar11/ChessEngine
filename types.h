@@ -5,6 +5,7 @@
 #include <cstdint>
 
 constexpr int MAX_MOVES = 256;
+constexpr int MAX_DEPTH = 32;
 
 using Bitboard = std::uint64_t;
 
@@ -30,6 +31,14 @@ struct Move
     Square to; //move it to 'to'
     ColoredPieceType promotion_piece; //if move is a promotion, to what should promote
     MoveFlag flag; //flag for special moves
+};
+
+struct StateInfo //use for unmake_move. to save things that could not be restored (that make_move might changed)
+{
+    Square en_passant_square; //what was the en passant square
+    ColoredPieceType captured_piece; //if captured a piece, what was it
+    uint8_t castling_rights; //what were the castling rights
+    int half_moves; //what was the value of the half_moves counter
 };
 
 ColoredPieceType char_to_piece(char c);
