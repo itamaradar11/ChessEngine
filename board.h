@@ -17,6 +17,8 @@ public:
     int search_max(int depth, int alpha, int beta);
     int search_min(int depth, int alpha, int beta);
 
+    friend class MoveGenerator;
+
 private:
     Bitboard piece_boards[12]; //6 piece types X 2 colors
     Bitboard colored_boards[2]; //boards specifiying if each square is occupied by a white/black piece

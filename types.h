@@ -7,8 +7,6 @@
 constexpr int MAX_MOVES = 256;
 constexpr int MAX_DEPTH = 32;
 
-using Bitboard = std::uint64_t;
-
 enum Color : std::uint8_t {WHITE, BLACK};
 //enum PieceType {PAWN, KNIGHT, BISHOP, QUEEN, KING, NONE};
 enum ColoredPieceType : std::uint8_t {WHITE_PAWN, WHITE_KNIGHT, WHITE_BISHOP, WHITE_ROOK, WHITE_QUEEN, WHITE_KING, BLACK_PAWN, BLACK_KNIGHT, BLACK_BISHOP, BLACK_ROOK, BLACK_QUEEN, BLACK_KING, NONE_PEICE};
