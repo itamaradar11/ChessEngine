@@ -27,15 +27,22 @@ private:
     void add_move(Square from, Square to, MoveFlag flag);
     void add_move(Square from, Square to, MoveFlag flag, ColoredPieceType promotion);
     void add_move(Bitboard board, int8_t offset, MoveFlag flag);
+    void add_move(Bitboard board, Square from, MoveFlag flag);
     bool get_next_move_if_exists(Move& next_move);
     void generate_capture_moves();
     void generate_capture_moves_pawn(Color color);
-    void generate_capture_moves_rook();
-    void generate_capture_moves_bishop();
+    void generate_capture_moves_rook(Color color);
+    void generate_capture_moves_bishop(Color color);
     void generate_capture_moves_knight(Color color);
-    void generate_capture_moves_queen();
+    void generate_capture_moves_queen(Color color);
     void generate_capture_moves_king(Color color);
     void generate_quiet_moves();
+    void generate_quiet_moves_pawn(Color color);
+    void generate_quiet_moves_rook(Color color);
+    void generate_quiet_moves_bishop(Color color);
+    void generate_quiet_moves_knight(Color color);
+    void generate_quiet_moves_queen(Color color);
+    void generate_quiet_moves_king(Color color);
 };
     
 #endif
