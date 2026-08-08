@@ -2,20 +2,24 @@
 #define BOARD
 
 #include "types.h"
+#include "bitboard.h"
+#include "const_score_boards.h"
+
+constexpr int MATE_SCORE = 1000000;
+constexpr int ILLEGAL_MOVE_SCORE = 1500000;
+constexpr int DEPTH = 8;
 
 class Board {
 public:
     Board();
     void setup_start_position();
-    ColoredPieceType get_piece_at(Square sq);
-    ColoredPieceType get_piece_at(Square sq, Color color);
     void load_fen(const std::string& fen);
     void print_board();
     void make_move(const Move& move, StateInfo& state);
     void unmake_move(const Move& move, const StateInfo& state);
     Move search_best_move();
-    int search_max(int depth, int alpha, int beta);
-    int search_min(int depth, int alpha, int beta);
+    int score_board();
+    void play_game();
 
     friend class MoveGenerator;
 
@@ -33,6 +37,15 @@ private:
     int full_moves;
     Color engine_color;
     StateInfo states[MAX_DEPTH];
+
+    ColoredPieceType get_piece_at(Square sq);
+    ColoredPieceType get_piece_at(Square sq, Color color);
+    int search_max(int depth, int alpha, int beta);
+    int search_min(int depth, int alpha, int beta);
+    GamePhase get_game_phase();
+    Move get_user_move();
+    void ask_user_color();
+    void print_enging_move(const Move& move);
 };
 
 #endif

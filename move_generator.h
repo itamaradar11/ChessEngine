@@ -9,6 +9,8 @@ class MoveGenerator{
 public:
     MoveGenerator(const Board& board);
     bool step(Move& next_move);
+    bool is_square_attacked(Square sq, Color attacked_by);
+    void init();
 
 private:
     enum Stage {NONE_STAGE, CAPTURES, QUIETS};
@@ -22,13 +24,14 @@ private:
     static Bitboard ROOK_RAY_CASTS[64][4];
     static Bitboard BISHOP_ATTACK_TABLES[64][64];
     static Bitboard BISHOP_RAY_CASTS[64][4];
-    void init();
 
     void add_move(Square from, Square to, MoveFlag flag);
     void add_move(Square from, Square to, MoveFlag flag, ColoredPieceType promotion);
     void add_move(Bitboard board, int8_t offset, MoveFlag flag);
     void add_move(Bitboard board, Square from, MoveFlag flag);
     bool get_next_move_if_exists(Move& next_move);
+    Bitboard get_rook_attacks(Square sq, Bitboard occupied);
+    Bitboard get_bishop_attacks(Square sq, Bitboard occupied);
     void generate_capture_moves();
     void generate_capture_moves_pawn(Color color);
     void generate_capture_moves_rook(Color color);

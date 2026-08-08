@@ -1,4 +1,10 @@
 #include "move_generator.h"
+#include <iostream>
+
+Bitboard MoveGenerator::ROOK_ATTACK_TABLES[64][64];
+Bitboard MoveGenerator::ROOK_RAY_CASTS[64][4];
+Bitboard MoveGenerator::BISHOP_ATTACK_TABLES[64][64];
+Bitboard MoveGenerator::BISHOP_RAY_CASTS[64][4];
 
 MoveGenerator::MoveGenerator(const Board& board): board(board), stage(NONE_STAGE){}
 
@@ -93,6 +99,36 @@ void MoveGenerator::add_move(Bitboard board, Square from, MoveFlag flag){
         moves[count] = move;
         ++count;
     }
+}
+
+Bitboard MoveGenerator::get_rook_attacks(Square sq, Bitboard occupied){
+    Bitboard up_block = occupied & ROOK_RAY_CASTS[sq][0];
+    Bitboard right_block = occupied & ROOK_RAY_CASTS[sq][1];
+    Bitboard down_block = occupied & ROOK_RAY_CASTS[sq][2];
+    Bitboard left_block = occupied & ROOK_RAY_CASTS[sq][3];
+
+    Bitboard up_moves = up_block ? ROOK_ATTACK_TABLES[sq][lsb(up_block)] : ROOK_RAY_CASTS[sq][0];
+    Bitboard right_moves = right_block ? ROOK_ATTACK_TABLES[sq][lsb(right_block)] : ROOK_RAY_CASTS[sq][1];
+    Bitboard down_moves = down_block ? ROOK_ATTACK_TABLES[sq][msb(down_block)] : ROOK_RAY_CASTS[sq][2];
+    Bitboard left_moves = left_block ? ROOK_ATTACK_TABLES[sq][msb(left_block)] : ROOK_RAY_CASTS[sq][3];
+
+    Bitboard moves = up_moves | right_moves | down_moves | left_moves;
+    return moves;
+}
+
+Bitboard MoveGenerator::get_bishop_attacks(Square sq, Bitboard occupied){
+    Bitboard up_right_block = occupied & BISHOP_RAY_CASTS[sq][0];
+    Bitboard down_right_block = occupied & BISHOP_RAY_CASTS[sq][1];
+    Bitboard down_left_block = occupied & BISHOP_RAY_CASTS[sq][2];
+    Bitboard up_left_block = occupied & BISHOP_RAY_CASTS[sq][3];
+
+    Bitboard up_right_moves = up_right_block ? BISHOP_ATTACK_TABLES[sq][lsb(up_right_block)] : BISHOP_RAY_CASTS[sq][0];
+    Bitboard down_right_moves = down_right_block ? BISHOP_ATTACK_TABLES[sq][lsb(down_right_block)] : BISHOP_RAY_CASTS[sq][1];
+    Bitboard down_left_moves = down_left_block ? BISHOP_ATTACK_TABLES[sq][msb(down_left_block)] : BISHOP_RAY_CASTS[sq][2];   
+    Bitboard up_left_moves = up_left_block ? BISHOP_ATTACK_TABLES[sq][msb(up_left_block)] : BISHOP_RAY_CASTS[sq][3];
+
+    Bitboard moves = up_right_moves | down_right_moves | down_left_moves | up_left_moves;
+    return moves;
 }
 
 void MoveGenerator::generate_capture_moves_pawn(Color color){
@@ -236,18 +272,7 @@ void MoveGenerator::generate_capture_moves_rook(Color color){
 
     while(rooks){
         Square rook = get_lsb(rooks);
-        Bitboard up_block = occupied & ROOK_RAY_CASTS[rook][0];
-        Bitboard right_block = occupied & ROOK_RAY_CASTS[rook][1];
-        Bitboard down_block = occupied & ROOK_RAY_CASTS[rook][2];
-        Bitboard left_block = occupied & ROOK_RAY_CASTS[rook][3];
-
-        Bitboard up_moves = up_block ? ROOK_ATTACK_TABLES[rook][lsb(up_block)] : ROOK_RAY_CASTS[rook][0];
-        Bitboard right_moves = right_block ? ROOK_ATTACK_TABLES[rook][lsb(right_block)] : ROOK_RAY_CASTS[rook][1];
-        Bitboard down_moves = down_block ? ROOK_ATTACK_TABLES[rook][msb(down_block)] : ROOK_RAY_CASTS[rook][2];
-        Bitboard left_moves = left_block ? ROOK_ATTACK_TABLES[rook][msb(left_block)] : ROOK_RAY_CASTS[rook][3];
-
-        Bitboard moves = up_moves | right_moves | down_moves | left_moves;
-        Bitboard attacks = moves & enemies;
+        Bitboard attacks = get_rook_attacks(rook, occupied) & enemies;
         add_move(attacks, rook, CAPTURE);
     }
 }
@@ -259,18 +284,7 @@ void MoveGenerator::generate_capture_moves_bishop(Color color){
 
     while(bishops){
         Square bishop = get_lsb(bishops);
-        Bitboard up_right_block = occupied & BISHOP_RAY_CASTS[bishop][0];
-        Bitboard down_right_block = occupied & BISHOP_RAY_CASTS[bishop][1];
-        Bitboard down_left_block = occupied & BISHOP_RAY_CASTS[bishop][2];
-        Bitboard up_left_block = occupied & BISHOP_RAY_CASTS[bishop][3];
-
-        Bitboard up_right_moves = up_right_block ? BISHOP_ATTACK_TABLES[bishop][lsb(up_right_block)] : BISHOP_RAY_CASTS[bishop][0];
-        Bitboard down_right_moves = down_right_block ? BISHOP_ATTACK_TABLES[bishop][lsb(down_right_block)] : BISHOP_RAY_CASTS[bishop][1];
-        Bitboard down_left_moves = down_left_block ? BISHOP_ATTACK_TABLES[bishop][msb(down_left_block)] : BISHOP_RAY_CASTS[bishop][2];   
-        Bitboard up_left_moves = up_left_block ? BISHOP_ATTACK_TABLES[bishop][msb(up_left_block)] : BISHOP_RAY_CASTS[bishop][3];
-
-        Bitboard moves = up_right_moves | down_right_moves | down_left_moves | up_left_moves;
-        Bitboard attacks = moves & enemies;
+        Bitboard attacks = get_bishop_attacks(bishop, occupied) & enemies;
         add_move(attacks, bishop, CAPTURE);
     }
 }
@@ -283,30 +297,8 @@ void MoveGenerator::generate_capture_moves_queen(Color color){
     while(queens){
         Square queen = get_lsb(queens);
         //bishop diagonals
-        Bitboard up_right_block = occupied & BISHOP_RAY_CASTS[queen][0];
-        Bitboard down_right_block = occupied & BISHOP_RAY_CASTS[queen][1];
-        Bitboard down_left_block = occupied & BISHOP_RAY_CASTS[queen][2];
-        Bitboard up_left_block = occupied & BISHOP_RAY_CASTS[queen][3];
 
-        Bitboard diag_moves = 0ULL;
-        diag_moves |= up_right_block ? BISHOP_ATTACK_TABLES[queen][lsb(up_right_block)] : BISHOP_RAY_CASTS[queen][0];
-        diag_moves |= down_right_block ? BISHOP_ATTACK_TABLES[queen][lsb(down_right_block)] : BISHOP_RAY_CASTS[queen][1];
-        diag_moves |= down_left_block ? BISHOP_ATTACK_TABLES[queen][msb(down_left_block)] : BISHOP_RAY_CASTS[queen][2];
-        diag_moves |= up_left_block ? BISHOP_ATTACK_TABLES[queen][msb(up_left_block)] : BISHOP_RAY_CASTS[queen][3];
-
-        //rook straights
-        Bitboard up_block = occupied & ROOK_RAY_CASTS[queen][0];
-        Bitboard right_block = occupied & ROOK_RAY_CASTS[queen][1];
-        Bitboard down_block = occupied & ROOK_RAY_CASTS[queen][2];
-        Bitboard left_block = occupied & ROOK_RAY_CASTS[queen][3];
-
-        Bitboard straight_moves = 0;
-        straight_moves |= up_block ? ROOK_ATTACK_TABLES[queen][lsb(up_block)] : ROOK_RAY_CASTS[queen][0];
-        straight_moves |= right_block ? ROOK_ATTACK_TABLES[queen][lsb(right_block)] : ROOK_RAY_CASTS[queen][1];
-        straight_moves |= down_block ? ROOK_ATTACK_TABLES[queen][msb(down_block)] : ROOK_RAY_CASTS[queen][2];
-        straight_moves |= left_block ? ROOK_ATTACK_TABLES[queen][msb(left_block)] : ROOK_RAY_CASTS[queen][3];
-
-        Bitboard attacks = (diag_moves | straight_moves) & enemies;
+        Bitboard attacks = (get_rook_attacks(queen, occupied) | get_bishop_attacks(queen, occupied)) & enemies;
         add_move(attacks, queen, CAPTURE);
     }
 }
@@ -321,6 +313,8 @@ void MoveGenerator::generate_capture_moves(){
     generate_capture_moves_rook(side);
     generate_capture_moves_bishop(side);
     generate_capture_moves_king(side);
+
+    stage = CAPTURES;
 }
 
 //Quiet moves
@@ -430,18 +424,7 @@ void MoveGenerator::generate_quiet_moves_rook(Color color){
 
     while(rooks){
         Square rook = get_lsb(rooks);
-        Bitboard up_block = occupied & ROOK_RAY_CASTS[rook][0];
-        Bitboard right_block = occupied & ROOK_RAY_CASTS[rook][1];
-        Bitboard down_block = occupied & ROOK_RAY_CASTS[rook][2];
-        Bitboard left_block = occupied & ROOK_RAY_CASTS[rook][3];
-
-        Bitboard up_moves = up_block ? ROOK_ATTACK_TABLES[rook][lsb(up_block)] : ROOK_RAY_CASTS[rook][0];
-        Bitboard right_moves = right_block ? ROOK_ATTACK_TABLES[rook][lsb(right_block)] : ROOK_RAY_CASTS[rook][1];
-        Bitboard down_moves = down_block ? ROOK_ATTACK_TABLES[rook][msb(down_block)] : ROOK_RAY_CASTS[rook][2];
-        Bitboard left_moves = left_block ? ROOK_ATTACK_TABLES[rook][msb(left_block)] : ROOK_RAY_CASTS[rook][3];
-
-        Bitboard moves = up_moves | right_moves | down_moves | left_moves;
-        Bitboard attacks = moves & (~occupied);
+        Bitboard attacks = get_rook_attacks(rook, occupied) & (~occupied);
         add_move(attacks, rook, QUIET);
     }
 }
@@ -452,18 +435,7 @@ void MoveGenerator::generate_quiet_moves_bishop(Color color){
 
     while(bishops){
         Square bishop = get_lsb(bishops);
-        Bitboard up_right_block = occupied & BISHOP_RAY_CASTS[bishop][0];
-        Bitboard down_right_block = occupied & BISHOP_RAY_CASTS[bishop][1];
-        Bitboard down_left_block = occupied & BISHOP_RAY_CASTS[bishop][2];
-        Bitboard up_left_block = occupied & BISHOP_RAY_CASTS[bishop][3];
-
-        Bitboard up_right_moves = up_right_block ? BISHOP_ATTACK_TABLES[bishop][lsb(up_right_block)] : BISHOP_RAY_CASTS[bishop][0];
-        Bitboard down_right_moves = down_right_block ? BISHOP_ATTACK_TABLES[bishop][lsb(down_right_block)] : BISHOP_RAY_CASTS[bishop][1];
-        Bitboard down_left_moves = down_left_block ? BISHOP_ATTACK_TABLES[bishop][msb(down_left_block)] : BISHOP_RAY_CASTS[bishop][2];   
-        Bitboard up_left_moves = up_left_block ? BISHOP_ATTACK_TABLES[bishop][msb(up_left_block)] : BISHOP_RAY_CASTS[bishop][3];
-
-        Bitboard moves = up_right_moves | down_right_moves | down_left_moves | up_left_moves;
-        Bitboard attacks = moves & (~occupied);
+        Bitboard attacks = get_bishop_attacks(bishop, occupied) & (~occupied);
         add_move(attacks, bishop, QUIET);
     }
 }
@@ -474,31 +446,7 @@ void MoveGenerator::generate_quiet_moves_queen(Color color){
 
     while(queens){
         Square queen = get_lsb(queens);
-        //bishop diagonals
-        Bitboard up_right_block = occupied & BISHOP_RAY_CASTS[queen][0];
-        Bitboard down_right_block = occupied & BISHOP_RAY_CASTS[queen][1];
-        Bitboard down_left_block = occupied & BISHOP_RAY_CASTS[queen][2];
-        Bitboard up_left_block = occupied & BISHOP_RAY_CASTS[queen][3];
-
-        Bitboard diag_moves = 0ULL;
-        diag_moves |= up_right_block ? BISHOP_ATTACK_TABLES[queen][lsb(up_right_block)] : BISHOP_RAY_CASTS[queen][0];
-        diag_moves |= down_right_block ? BISHOP_ATTACK_TABLES[queen][lsb(down_right_block)] : BISHOP_RAY_CASTS[queen][1];
-        diag_moves |= down_left_block ? BISHOP_ATTACK_TABLES[queen][msb(down_left_block)] : BISHOP_RAY_CASTS[queen][2];
-        diag_moves |= up_left_block ? BISHOP_ATTACK_TABLES[queen][msb(up_left_block)] : BISHOP_RAY_CASTS[queen][3];
-
-        //rook straights
-        Bitboard up_block = occupied & ROOK_RAY_CASTS[queen][0];
-        Bitboard right_block = occupied & ROOK_RAY_CASTS[queen][1];
-        Bitboard down_block = occupied & ROOK_RAY_CASTS[queen][2];
-        Bitboard left_block = occupied & ROOK_RAY_CASTS[queen][3];
-
-        Bitboard straight_moves = 0;
-        straight_moves |= up_block ? ROOK_ATTACK_TABLES[queen][lsb(up_block)] : ROOK_RAY_CASTS[queen][0];
-        straight_moves |= right_block ? ROOK_ATTACK_TABLES[queen][lsb(right_block)] : ROOK_RAY_CASTS[queen][1];
-        straight_moves |= down_block ? ROOK_ATTACK_TABLES[queen][msb(down_block)] : ROOK_RAY_CASTS[queen][2];
-        straight_moves |= left_block ? ROOK_ATTACK_TABLES[queen][msb(left_block)] : ROOK_RAY_CASTS[queen][3];
-
-        Bitboard attacks = (diag_moves | straight_moves) & (~occupied);
+        Bitboard attacks = (get_rook_attacks(queen, occupied) | get_bishop_attacks(queen, occupied)) & (~occupied);
         add_move(attacks, queen, QUIET);
     }
 }
@@ -507,28 +455,41 @@ void MoveGenerator::generate_quiet_moves(){
     Color side = board.side_to_move;
 
     //generate moves by the following order:
-    generate_capture_moves_pawn(side);
+    generate_quiet_moves_pawn(side);
     generate_quiet_moves_knight(side);
     generate_quiet_moves_queen(side);
     generate_quiet_moves_rook(side);
     generate_quiet_moves_bishop(side);
     generate_quiet_moves_king(side);
+
+    stage = QUIETS;
 }
 
 bool MoveGenerator::step(Move& next_move){
     //if there exists unused moves
     if(get_next_move_if_exists(next_move)){
+        // std::cout << "1" << std::endl;
         return true;
     }
 
     if(stage == NONE_STAGE){
+        // std::cout << "2" << std::endl;
+
         generate_capture_moves();
+        // std::cout << "done" << std::endl;
+
         //try to return a capture move (will only fail if could not generare any capturing moves)
         if(get_next_move_if_exists(next_move)){
+        //    std::cout << "finished." << std::endl;
+
             return true;
         }
+        // std::cout << "weird" << std::endl;
+
     }
-    if(stage == CAPTURE){
+    if(stage == CAPTURES){
+        // std::cout << "3" << std::endl;
+
         generate_quiet_moves();
         //try to return a quiet move (will only fail if could not generare any quiet moves)
         if(get_next_move_if_exists(next_move)){
@@ -536,4 +497,48 @@ bool MoveGenerator::step(Move& next_move){
         }
     }
     return false; //no moves left to generate
+}
+
+bool MoveGenerator::is_square_attacked(Square sq, Color attacked_by){
+    Bitboard occupied = board.occupied_board;
+
+    //check if enemy rook can capture sq is like checking if "our side" rook placed in sq could capture an enemy rook
+    Bitboard enemy_moves_straights = attacked_by==WHITE ? (board.piece_boards[WHITE_ROOK] | board.piece_boards[WHITE_QUEEN]) : (board.piece_boards[BLACK_ROOK] | board.piece_boards[BLACK_QUEEN]);
+    if(get_rook_attacks(sq, occupied) & enemy_moves_straights)
+        return true;
+
+    //same for diagonals
+    Bitboard enemy_moves_diagonals = attacked_by==WHITE ? (board.piece_boards[WHITE_BISHOP] | board.piece_boards[WHITE_QUEEN]) : (board.piece_boards[BLACK_BISHOP] | board.piece_boards[BLACK_QUEEN]);
+    if(get_bishop_attacks(sq, occupied) & enemy_moves_diagonals)
+        return true;
+
+    //same idea for knights
+    Bitboard square_board = (1ULL << sq);
+    Bitboard knight_attacks = ((square_board >> 10) & NOT_RANK_78_MASK) | ((square_board >> 17) & NOT_RANK_8_MASK)
+                            | ((square_board >> 15) & NOT_RANK_1_MASK) | ((square_board >> 6) & NOT_RANK_12_MASK)
+                            | ((square_board << 10) & NOT_RANK_12_MASK) | ((square_board << 17) & NOT_RANK_1_MASK)
+                            | ((square_board << 15) & NOT_RANK_8_MASK) | ((square_board << 6) & NOT_RANK_78_MASK);
+    Bitboard enemy_kinghts = board.piece_boards[attacked_by==WHITE ? WHITE_KNIGHT : BLACK_KNIGHT];
+    if(enemy_kinghts & knight_attacks)
+        return true;
+    
+    //and for pawn too
+    Bitboard pawn_attacks = attacked_by==WHITE
+                            ? ((square_board >> 9) & NOT_RANK_8_MASK) | ((square_board << 7) & NOT_RANK_8_MASK) //attacks on rank 8 are impossible for a black pawn
+                            : ((square_board >> 7) & NOT_RANK_1_MASK) | ((square_board << 9) & NOT_RANK_1_MASK); //attacks on rank 1 are impossinle for a white pawn
+    Bitboard enemy_pawns = board.piece_boards[attacked_by==WHITE ? WHITE_PAWN : BLACK_PAWN];
+    if(pawn_attacks & enemy_pawns)
+        return true;
+
+    //last, king
+    Bitboard king_attacks = ((square_board >> 1) & NOT_RANK_8_MASK) | ((square_board >> 9) & NOT_RANK_8_MASK)
+                            | (square_board >> 8) | ((square_board >> 7) & NOT_RANK_1_MASK)
+                            | ((square_board << 1) & NOT_RANK_1_MASK) | ((square_board << 9) & NOT_RANK_1_MASK)
+                            | (square_board << 8) | ((square_board << 7) & NOT_RANK_8_MASK);
+    Bitboard enemy_king = board.piece_boards[attacked_by==WHITE ? WHITE_KING : BLACK_KING];
+    if(king_attacks & enemy_king)
+        return true;
+
+    //if passed all these tests, not on attack
+    return false;
 }

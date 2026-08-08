@@ -32,4 +32,8 @@ inline Square msb(Bitboard bb){
     return static_cast<Square>(__builtin_clzll(bb)); //index of MSB
 }
 
+inline int popcount(Bitboard bb){
+    return __builtin_popcountll(bb);
+}
+
 #endif

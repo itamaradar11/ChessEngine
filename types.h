@@ -22,6 +22,7 @@ enum Square : std::uint8_t {
     NONE_SQUARE
 };
 enum MoveFlag : std::uint8_t {QUIET, DOUBLE_PAWN_PUSH, KING_CASTLE, QUEEN_CASTLE, CAPTURE, EN_PASSANT, PROMOTION, CAPTURE_PROMOTION};
+enum GamePhase : std::uint8_t {GOING, BLACK_MATE, WHITE_MATE, STALEMATE};
 
 struct Move
 {

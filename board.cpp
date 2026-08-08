@@ -22,6 +22,10 @@ Board::Board(){
     full_moves = 1; //chess games start at 1 and not 0
 
     engine_color = BLACK;
+
+    //init attack boards
+    MoveGenerator generator(*this);
+    generator.init();
 }
 
 void Board::setup_start_position(){
@@ -103,6 +107,32 @@ ColoredPieceType Board::get_piece_at(Square sq, Color color){
 
     //I don't think it is possible to get here, but just in case
     return NONE_PEICE;
+}
+
+int Board::score_board(){
+    int mg_score = 0;
+    int eg_score = 0;
+
+    //calc end-game & middle-game scores
+    for(int piece_type = 0; piece_type < 12; piece_type++){
+        Bitboard bb = piece_boards[piece_type];
+        while(bb){
+            Square sq = get_lsb(bb);
+            mg_score += MG_TABLES[piece_type][sq];
+            eg_score += EG_TABLES[piece_type][sq];
+        }
+        
+    }
+
+    //calc end-game percentage (calc in what phase are we)
+    //each "special" piece gets a score (knight - 1, bishop - 1, rook - 2, queen - 4)
+    //max score is 24. 24 is fully middlegame. 0 is fully endgame.
+    int phase = (popcount(piece_boards[WHITE_KNIGHT]) + popcount(piece_boards[BLACK_KNIGHT])
+            + popcount(piece_boards[WHITE_BISHOP]) + popcount(piece_boards[BLACK_BISHOP])
+            + popcount(piece_boards[WHITE_ROOK]) * 2 + popcount(piece_boards[BLACK_ROOK]) * 2
+            + popcount(piece_boards[WHITE_QUEEN]) * 4 + popcount(piece_boards[BLACK_QUEEN]) * 4) / 24;
+
+    return (phase * mg_score + (24 - phase) * eg_score) / 24;
 }
 
 void Board::load_fen(const std::string& fen){
@@ -680,14 +710,20 @@ void Board::unmake_move(const Move& move, const StateInfo& state){
 }
 
 int Board::search_max(int depth, int alpha, int beta){
+    MoveGenerator generator = MoveGenerator(*this);
+
+    //check if previous move (min side) left their king in check - return a value saying this is illegal
+    Square min_side_king = lsb(piece_boards[side_to_move==WHITE ? BLACK_KING : WHITE_KING]);
+    if(generator.is_square_attacked(min_side_king, side_to_move))
+        return ILLEGAL_MOVE_SCORE;
+
     //leaf
     if(depth == 0){
         return score_board();
     }
 
-    MoveGenerator generator = MoveGenerator(*this);
     Move move;
-    int best_score = -1000000;
+    int best_score = -ILLEGAL_MOVE_SCORE;
 
     while(generator.step(move)){ //while MoveGenerator still has moves
 
@@ -695,6 +731,10 @@ int Board::search_max(int depth, int alpha, int beta){
         make_move(move, states[depth]);
         int score = search_min(depth - 1, alpha, beta);
         unmake_move(move, states[depth]);
+
+        //if illegal move (left our king in check)
+        if(score == -ILLEGAL_MOVE_SCORE)
+            continue; //skip this illegal move
 
         //alpha-beta pruning. parent node (minimizer) already found a move that gives a lower score
         if(score >= beta){ 
@@ -704,21 +744,38 @@ int Board::search_max(int depth, int alpha, int beta){
         //best move so far
         if(best_score < score){
             best_score = score;
+            //if we found a move beating our grandparent's best (our parent's alpha)
+            if(score > alpha)
+                alpha = score;
         }
+    }
+
+    //we could not find any legal move
+    if(best_score == -ILLEGAL_MOVE_SCORE){
+        Square my_king = lsb(piece_boards[side_to_move == WHITE ? WHITE_KING : BLACK_KING]);
+        if (generator.is_square_attacked(my_king, static_cast<Color>(side_to_move ^ 1)))
+            return -MATE_SCORE - 50 * depth; //checkmate for the other side
+        return 0; //stalemate
     }
 
     return best_score;
 }
 
 int Board::search_min(int depth, int alpha, int beta){
+    MoveGenerator generator = MoveGenerator(*this);
+
+    //check if previous move (max side) left their king in check - return a value saying this is illegal
+    Square max_side_king = lsb(piece_boards[side_to_move==WHITE ? BLACK_KING : WHITE_KING]);
+    if(generator.is_square_attacked(max_side_king, side_to_move))
+        return -ILLEGAL_MOVE_SCORE;
+
     //leaf
     if(depth == 0){
         return score_board();
     }
 
-    MoveGenerator generator = MoveGenerator(*this);
     Move move;
-    int best_score = 1000000;
+    int best_score = ILLEGAL_MOVE_SCORE;
 
     while(generator.step(move)){ //while MoveGenerator still has moves
 
@@ -727,7 +784,11 @@ int Board::search_min(int depth, int alpha, int beta){
         int score = search_max(depth - 1, alpha, beta);
         unmake_move(move, states[depth]);
 
-        //alpha-beta pruning. parent node (minimizer) already found a move that gives a lower score
+        //if illegal move (left our king in check)
+        if(score == ILLEGAL_MOVE_SCORE)
+            continue; //skip this illegal move
+
+        //alpha-beta pruning. parent node (maximizer) already found a move that gives a lower score
         if(score <= alpha){ 
             return score;
         }
@@ -735,8 +796,217 @@ int Board::search_min(int depth, int alpha, int beta){
         //best move so far
         if(best_score > score){
             best_score = score;
+            //if we found a move beating our grandparent's best (our parent's beta)
+            if(score < beta)
+                beta = score;
         }
     }
 
+    //we could not find any legal move
+    if(best_score == ILLEGAL_MOVE_SCORE){
+        Square my_king = lsb(piece_boards[side_to_move == WHITE ? WHITE_KING : BLACK_KING]);
+        if (generator.is_square_attacked(my_king, static_cast<Color>(side_to_move ^ 1)))
+            return MATE_SCORE + 50 * depth; //checkmate for the other side
+        return 0; //stalemate
+    }
+
     return best_score;
+}
+
+Move Board::search_best_move(){
+    MoveGenerator generator(*this);
+    Move move;
+    Move best_move;
+    int alpha = -ILLEGAL_MOVE_SCORE;
+    int beta = ILLEGAL_MOVE_SCORE;
+
+    //if engine is white - it should maximize the score
+    if(side_to_move == WHITE){
+        int best_score = -ILLEGAL_MOVE_SCORE;
+
+        while(generator.step(move)){
+            //try this move
+            make_move(move, states[DEPTH]);
+            int score = search_min(DEPTH - 1, alpha, beta);
+            unmake_move(move, states[DEPTH]);
+
+            //if illegal move (left our king in check)
+            if(score == -ILLEGAL_MOVE_SCORE)
+                continue; //skip this illegal move
+
+            //found new best move
+            if(score > best_score){ 
+                best_score = score;
+                best_move = move;
+                alpha = score; //alpha is just always best-score in the root (uses 2 different vars for clarity)
+            }
+        }
+    } else { //if engine is black - it should minimize the score
+        int best_score = ILLEGAL_MOVE_SCORE;
+
+        while(generator.step(move)){
+            //try this move
+            make_move(move, states[DEPTH]);
+            int score = search_max(DEPTH - 1, alpha, beta);
+            unmake_move(move, states[DEPTH]);
+
+            //if illegal move (left our king in check)
+            if(score == ILLEGAL_MOVE_SCORE)
+                continue; //skip this illegal move
+
+            //found new best move
+            if(score < best_score){ 
+                best_score = score;
+                best_move = move;
+                beta = score; //alpha is just always best-score in the root (uses 2 different vars for clarity)
+            }
+        }
+    }
+
+    return best_move;
+}
+
+//check is side_to_move lost/stalemate (if other_side won in their move)
+GamePhase Board::get_game_phase(){
+    //if side_to_move's king is not currently attacked, game still running
+    ColoredPieceType king = side_to_move == WHITE ? WHITE_KING : BLACK_KING;
+    MoveGenerator generator(*this);
+    Move move;
+
+    //try to find a single move that side_to_move's king won't be attacked after
+    //if can find one - game still goingc
+    //if cannot - mate for other side or stalemate
+    while(generator.step(move)){
+        make_move(move, states[0]);
+        Square king_sq = lsb(piece_boards[king]);
+
+        //check if king is attacked
+        //note that side_to_move flipped after make_move()
+        if(!generator.is_square_attacked(king_sq, side_to_move)){
+            unmake_move(move, states[0]);
+            return GOING;
+        }
+        
+        unmake_move(move, states[0]);
+    }
+
+    //we could not find any move that will leave our king safe
+    //if it currently attacked - mate for the other side
+    //if currently not attacked - stalemate
+    Square king_sq = lsb(piece_boards[king]);
+    if(generator.is_square_attacked(king_sq, static_cast<Color>(side_to_move ^ 1)))
+        return side_to_move == WHITE ? BLACK_MATE : WHITE_MATE;
+    return STALEMATE;
+}
+
+Move Board::get_user_move(){
+    std::cout << "Enter your move - <from> <to> (e.g. e4 e3)" << std::endl;
+
+    std::string from_str, to_str;
+    std::cin >> from_str >> to_str;
+
+    //parse e2 -> ('e' - 'a') * 8 + ('2' - '1') = 4 * 8 + 1 = 33
+    Square from = static_cast<Square>((from_str[0] - 'a') * 8 + (from_str[1] - '1'));
+    Square to = static_cast<Square>((to_str[0] - 'a') * 8 + (to_str[1] - '1'));
+
+    //determine flag - instead of logic, generate all moves, and take the matching one
+    MoveGenerator generator(*this);
+    Move move;
+    while(generator.step(move)){
+        // print_enging_move(move);
+        if(move.from == from && move.to == to){
+            if((move.flag != CAPTURE_PROMOTION) && (move.flag != PROMOTION)) //not a promotion
+                return move;
+            
+            //a promotion, ask user for what type to prompte
+            std::cout << "Enter to what piece to promote your pawn (q/r/b/n)" << std::endl;
+            std::string promotion_str;
+            ColoredPieceType promotion_piece;
+            std::cin >> promotion_str;
+            if(promotion_str == "q" || promotion_str == "Q"){
+                promotion_piece = side_to_move == WHITE ? WHITE_QUEEN : BLACK_QUEEN;
+            } else if (promotion_str == "r" || promotion_str == "R"){
+                promotion_piece = side_to_move == WHITE ? WHITE_ROOK : BLACK_ROOK;
+            } else if (promotion_str == "b" || promotion_str == "B"){
+                promotion_piece = side_to_move == WHITE ? WHITE_BISHOP : BLACK_BISHOP;
+            } else if (promotion_str == "n" || promotion_str == "N"){
+                promotion_piece = side_to_move == WHITE ? WHITE_KNIGHT : BLACK_KNIGHT;
+            } else {
+                std::cout << "Entered an invalid value. Promotes to a queen." << std::endl;
+                promotion_piece = side_to_move == WHITE ? WHITE_QUEEN : BLACK_QUEEN;
+            }
+
+            move.promotion_piece = promotion_piece;
+            return move;
+        }
+    }
+
+
+    //invalid call - recursive call
+    std::cout << "You entered an invalid move." << std::endl;
+    return get_user_move();
+}
+
+void Board::ask_user_color(){
+    while(true){
+        std::cout << "Enter the color you want to play (w/b)" << std::endl;
+        std::string user_color;
+        std::cin >> user_color;
+
+        if(user_color == "W" || user_color == "w"){
+            engine_color = BLACK;
+            return;
+        }
+
+        if(user_color == "B" || user_color == "b"){
+            engine_color = WHITE;
+            return;
+        }
+
+        std::cout << "You enterd an invalid color." << std::endl;
+    }
+}
+
+void Board::print_enging_move(const Move& move){
+    //Square 33 = 'e2'. (33 / 8) + 'a' = 4 + 'a' = 'e' | 33 % 8 + '1' = 1 + '1' = '2'
+    char from_file = move.from/8 + 'a';
+    char from_rank = move.from%8 + '1';
+    char to_file = move.to/8 + 'a';
+    char to_rank = move.to%8 + '1';
+    std::cout << "Engine moved " << from_file << from_rank << " to " << to_file << to_rank << std::endl;
+}
+
+void Board::play_game(){
+    setup_start_position();
+    
+    ask_user_color();
+
+    while(get_game_phase() == GOING){
+        print_board();
+
+        if(side_to_move == engine_color){
+            Move move = search_best_move();
+            print_enging_move(move);
+            make_move(move, states[DEPTH]);
+        } else {
+            Move move = get_user_move();
+            make_move(move, states[DEPTH]);
+        }
+    }
+
+    print_board();
+    switch (get_game_phase())
+    {
+    case WHITE_MATE:
+        std::cout << "\n\nWHITE WON!" << std::endl;
+        break;
+    case BLACK_MATE:
+        std::cout << "\n\nBLACK WON!" << std::endl;
+        break;
+    case STALEMATE:
+        std::cout << "\n\nSTALEMATE!" << std::endl;
+        break;
+    default:
+        std::cout << "\n\nGAME IS STILL RUNNING FOR SOME REASON?!?!" << std::endl;
+    }
 }
