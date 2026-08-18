@@ -1,5 +1,6 @@
 #include "move_generator.h"
 #include <iostream>
+#include <algorithm>
 
 Bitboard MoveGenerator::ROOK_ATTACK_TABLES[64][64];
 Bitboard MoveGenerator::ROOK_RAY_CASTS[64][4];
@@ -70,18 +71,27 @@ bool MoveGenerator::get_next_move_if_exists(Move& next_move){
     return false;
 }
 
+//for every capture move, give it its mvv_lva score
+void MoveGenerator::score_capture_moves(){
+    Color enemy = static_cast<Color>(board.side_to_move ^ 1);
+    for(int i=0; i < count; i++){
+        mvv_lva_scores[i] = PIECE_VALUES[board.get_piece_at(moves[i].to, enemy)] - PIECE_VALUES[board.get_piece_at(moves[i].from, board.side_to_move)];
+    }
+}
+
+/*Add a single move when you know `from`, `to` and `flag`*/
 void MoveGenerator::add_move(Square from, Square to, MoveFlag flag){
     Move move = Move{from, to, NONE_PEICE, flag};
     moves[count] = move;
     ++count;
 }
-
+/*Add a single move when you know `from`, `to` and `flag = PROMOTION` or `flag = CAPTURE_PROMOTION`*/
 void MoveGenerator::add_move(Square from, Square to, MoveFlag flag, ColoredPieceType promotion){
     Move move = Move{from, to, promotion, flag};
     moves[count] = move;
     ++count;
 }
-
+/*Add moves when you have `flag` and a bitboard of all the `to` positions and a constant offset for the calculation of the `from` square*/
 void MoveGenerator::add_move(Bitboard board, int8_t offset, MoveFlag flag){
     while(board){
             Square to = get_lsb(board); //get to square
@@ -91,7 +101,7 @@ void MoveGenerator::add_move(Bitboard board, int8_t offset, MoveFlag flag){
             ++count;
         }
 }
-
+/*Add moves when you have a bitboard of all the `to` positions and a constant `from` square. */
 void MoveGenerator::add_move(Bitboard board, Square from, MoveFlag flag){
     while(board){
         Square to = get_lsb(board);
@@ -100,6 +110,7 @@ void MoveGenerator::add_move(Bitboard board, Square from, MoveFlag flag){
         ++count;
     }
 }
+
 
 Bitboard MoveGenerator::get_rook_attacks(Square sq, Bitboard occupied){
     Bitboard up_block = occupied & ROOK_RAY_CASTS[sq][0];
@@ -306,14 +317,31 @@ void MoveGenerator::generate_capture_moves_queen(Color color){
 void MoveGenerator::generate_capture_moves(){
     Color side = board.side_to_move;
 
-    //generate moves by the following order:
+    // Least valuable attacker first
     generate_capture_moves_pawn(side);
     generate_capture_moves_knight(side);
-    generate_capture_moves_queen(side);
-    generate_capture_moves_rook(side);
     generate_capture_moves_bishop(side);
+    generate_capture_moves_rook(side);
+    generate_capture_moves_queen(side);
     generate_capture_moves_king(side);
 
+    //sort by mvv_lva scores
+    score_capture_moves();
+    int indices[MAX_MOVES];
+    for (int i = 0; i < count; i++)
+        indices[i] = i;
+    //sort the indices arrat by the mvv_lva scores
+    std::sort(indices, indices + count, [this](int a, int b) {
+        return mvv_lva_scores[a] > mvv_lva_scores[b];
+    });
+    //now reorder moves[] by the new order of indices[]
+    Move temp[MAX_MOVES];
+    for(int i = 0; i < count; i++){
+        temp[i] = moves[i];
+    }
+    for(int i = 0; i < count; i++){
+        moves[i] = temp[indices[i]];
+    }
     stage = CAPTURES;
 }
 
@@ -416,6 +444,42 @@ void MoveGenerator::generate_quiet_moves_king(Color color){
     add_move(quiets_6, -9, QUIET);
     add_move(quiets_7, -8, QUIET);
     add_move(quiets_8, -7, QUIET);
+
+
+    //add castling moves
+    if(color == WHITE){
+        //WHITE KINGSIDE
+        if((board.castling_rights & 0b00001000) && //still has castling rights
+            !(board.occupied_board & ((1ULL << F1) | (1ULL << G1))) && //F1 and G1 sqaures are empty
+            !is_square_attacked(E1, BLACK) && //square currently not in check
+            !is_square_attacked(F1, BLACK)){ // F1 is not attacked
+            add_move(E1, G1, KING_CASTLE);
+        }
+
+        //WHITE QUEENSIDE
+        if((board.castling_rights & 0b00000100) && //still has castling rights
+            !(board.occupied_board & ((1ULL << B1) | (1ULL << C1) | (1ULL << D1))) && //B1, C1 and D1 squares are empty
+            !is_square_attacked(E1, BLACK) && //square currently not in check
+            !is_square_attacked(D1, BLACK)){ // D1 is not attacked
+            add_move(E1, C1, QUEEN_CASTLE);
+        }
+    } else {
+        //BLACK KINGSIDE
+        if((board.castling_rights & 0b00000010) && //still has castling rights
+            !(board.occupied_board & ((1ULL << F8) | (1ULL << G8))) && //F8 and G8 squares are empty
+            !is_square_attacked(E8, WHITE) && //square currently not in check
+            !is_square_attacked(F8, WHITE)){ // F8 is not attacked
+            add_move(E8, G8, KING_CASTLE);
+        }
+
+        //BLACK QUEENSIDE
+        if((board.castling_rights & 0b00000001) && //still has castling rights
+            !(board.occupied_board & ((1ULL << B8) | (1ULL << C8) | (1ULL << D8))) && //B8, C8 and D8 squares are empty
+            !is_square_attacked(E8, WHITE) && //square currently not in check
+            !is_square_attacked(D8, WHITE)){ // D8 is not attacked
+            add_move(E8, C8, QUEEN_CASTLE);
+        }
+    }
 }
 
 void MoveGenerator::generate_quiet_moves_rook(Color color){

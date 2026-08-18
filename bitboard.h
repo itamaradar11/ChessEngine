@@ -1,6 +1,7 @@
 #ifndef BITBOARD
 #define BITBOARD
 
+#include <iostream>
 #include "types.h"
 
 using Bitboard = std::uint64_t;
@@ -29,11 +30,21 @@ inline Square lsb(Bitboard bb){
 }
 
 inline Square msb(Bitboard bb){
-    return static_cast<Square>(__builtin_clzll(bb)); //index of MSB
+    return static_cast<Square>(63 - __builtin_clzll(bb)); //index of MSB
 }
 
 inline int popcount(Bitboard bb){
     return __builtin_popcountll(bb);
+}
+
+inline void print_bitboard(const Bitboard& bb){
+    for(int rank = 7; rank >= 0; rank--){
+        for(int file = 0; file <= 7; file++){
+            std::cout << ((bb >> (file * 8 + rank)) & 1) << " ";
+        }
+        std::cout << "\n";
+    }
+    std::cout << "\n";
 }
 
 #endif

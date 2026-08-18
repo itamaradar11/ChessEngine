@@ -74,7 +74,7 @@ void Board::setup_start_position(){
     occupied_board = colored_boards[WHITE] | colored_boards[BLACK];
 }
 
-ColoredPieceType Board::get_piece_at(Square sq){
+ColoredPieceType Board::get_piece_at(Square sq) const {
     //1) check if this square is occupied at all
     //board >> sq, moves the relevan square to the LSB
     //by doing & 1ULL we keep only the LSB
@@ -96,7 +96,7 @@ ColoredPieceType Board::get_piece_at(Square sq){
     return NONE_PEICE;
 }
 
-ColoredPieceType Board::get_piece_at(Square sq, Color color){
+ColoredPieceType Board::get_piece_at(Square sq, Color color) const {
     //go over all peice types
     //check for each if it occupies sq
     for(int type = color*6; type < color*6 + 6; type++){ //from color*6 to color*6 + 6, we search only relevant colored peices        
@@ -219,7 +219,7 @@ void Board::load_fen(const std::string& fen){
 void Board::print_board(){
     //in chess: files are lettered rows (e.g., A, B, C, etc..)
     //ranks are numerical rows (e.g., 1, 2, 3, etc..)
-    for(int rank = 0; rank < 8; rank++){
+    for(int rank = 7; rank >= 0; rank--){
         for(int file = 0; file < 8; file++){
             Square sq = calc_square(file, rank);
             ColoredPieceType peice = get_piece_at(sq);
@@ -263,7 +263,7 @@ void Board::print_board(){
                 std::cout << "q";
                 break;
             default: //NONE, not occupied square
-                std::cout << " ";
+                std::cout << "  ";
             }
             
             std::cout << "|";
@@ -709,7 +709,7 @@ void Board::unmake_move(const Move& move, const StateInfo& state){
     }
 }
 
-int Board::search_max(int depth, int alpha, int beta){
+int Board::search_max(int depth, int alpha, int beta, int level){
     MoveGenerator generator = MoveGenerator(*this);
 
     //check if previous move (min side) left their king in check - return a value saying this is illegal
@@ -729,7 +729,7 @@ int Board::search_max(int depth, int alpha, int beta){
 
         //try this move
         make_move(move, states[depth]);
-        int score = search_min(depth - 1, alpha, beta);
+        int score = search_min(depth - 1, alpha, beta, level + 1);
         unmake_move(move, states[depth]);
 
         //if illegal move (left our king in check)
@@ -745,8 +745,14 @@ int Board::search_max(int depth, int alpha, int beta){
         if(best_score < score){
             best_score = score;
             //if we found a move beating our grandparent's best (our parent's alpha)
-            if(score > alpha)
+            if(score > alpha){
+                //1. Update alpha
                 alpha = score;
+                //2. Update our best_moves 2D array
+                best_moves[level][level] = move;
+                for(int i = level + 1; i < level + depth; i++) //copy the next level best-moves
+                    best_moves[level][i] = best_moves[level+1][i];
+            }
         }
     }
 
@@ -761,7 +767,7 @@ int Board::search_max(int depth, int alpha, int beta){
     return best_score;
 }
 
-int Board::search_min(int depth, int alpha, int beta){
+int Board::search_min(int depth, int alpha, int beta, int level){
     MoveGenerator generator = MoveGenerator(*this);
 
     //check if previous move (max side) left their king in check - return a value saying this is illegal
@@ -781,7 +787,7 @@ int Board::search_min(int depth, int alpha, int beta){
 
         //try this move
         make_move(move, states[depth]);
-        int score = search_max(depth - 1, alpha, beta);
+        int score = search_max(depth - 1, alpha, beta, level+1);
         unmake_move(move, states[depth]);
 
         //if illegal move (left our king in check)
@@ -797,8 +803,14 @@ int Board::search_min(int depth, int alpha, int beta){
         if(best_score > score){
             best_score = score;
             //if we found a move beating our grandparent's best (our parent's beta)
-            if(score < beta)
+            if(score < beta){
+                //1. Update beta
                 beta = score;
+                //2. Update our best_moves 2D array
+                best_moves[level][level] = move;
+                for(int i = level + 1; i < level + depth; i++) //copy the next level best-moves
+                    best_moves[level][i] = best_moves[level+1][i];
+            }
         }
     }
 
@@ -814,6 +826,7 @@ int Board::search_min(int depth, int alpha, int beta){
 }
 
 Move Board::search_best_move(){
+    print_board();
     MoveGenerator generator(*this);
     Move move;
     Move best_move;
@@ -822,6 +835,11 @@ Move Board::search_best_move(){
 
     //if engine is white - it should maximize the score
     if(side_to_move == WHITE){
+        for(int current_depth = 1; current_depth <= MAX_DEPTH; current_depth++)
+            search_max(current_depth, -ILLEGAL_MOVE_SCORE, ILLEGAL_MOVE_SCORE, 0)
+
+        return best_moves[0][0];
+
         int best_score = -ILLEGAL_MOVE_SCORE;
 
         while(generator.step(move)){
@@ -861,8 +879,34 @@ Move Board::search_best_move(){
                 beta = score; //alpha is just always best-score in the root (uses 2 different vars for clarity)
             }
         }
+        if(best_score == ILLEGAL_MOVE_SCORE)
+            std::cout << "OH NO!" << std::endl;
+
     }
 
+    
+    Square black_king = lsb(piece_boards[BLACK_KING]);
+    std::cout << "Black king at: " << static_cast<int>(black_king) << std::endl;
+
+    std::cout << "Bishop attacks from king: " << std::endl;
+    print_bitboard(generator.get_bishop_attacks(black_king, occupied_board));
+
+    std::cout << "Ray cast[sq][0]: " << std::endl;
+    print_bitboard(occupied_board & generator.BISHOP_RAY_CASTS[black_king][0]);
+    std::cout << "Ray cast[sq][1]: " << std::endl;
+    print_bitboard(occupied_board & generator.BISHOP_RAY_CASTS[black_king][1]);
+    std::cout << "Ray cast[sq][2]: " << std::endl;
+    print_bitboard(occupied_board & generator.BISHOP_RAY_CASTS[black_king][2]);
+    std::cout << "BISHOP_ATTACK_TABLES[sq][2]: " << std::endl;
+    //msb(occupied_board & generator.BISHOP_RAY_CASTS[black_king][2])
+    print_bitboard(generator.BISHOP_ATTACK_TABLES[black_king][12]);
+    std::cout << "Ray cast[sq][3]: " << std::endl;
+    print_bitboard(occupied_board & generator.BISHOP_RAY_CASTS[black_king][3]);
+
+    std::cout << "White bishops+queens: " << std::endl;
+    print_bitboard(piece_boards[WHITE_BISHOP] | piece_boards[WHITE_QUEEN]);
+
+    std::cout << "Is attacked: " << generator.is_square_attacked(black_king, WHITE) << std::endl;
     return best_move;
 }
 
@@ -897,6 +941,73 @@ GamePhase Board::get_game_phase(){
     if(generator.is_square_attacked(king_sq, static_cast<Color>(side_to_move ^ 1)))
         return side_to_move == WHITE ? BLACK_MATE : WHITE_MATE;
     return STALEMATE;
+}
+
+Move Board::uci_to_move(const std::string& str_move){
+    Square from = static_cast<Square>((str_move[0] - 'a') * 8 + (str_move[1] - '1'));
+    Square to = static_cast<Square>((str_move[2] - 'a') * 8 + (str_move[3] - '1'));
+
+    //determine flag - instead of logic, generate all moves, and take the matching one
+    MoveGenerator generator(*this);
+    Move move;
+    while(generator.step(move)){
+        // print_enging_move(move);
+        if(move.from == from && move.to == to){
+            if((move.flag != CAPTURE_PROMOTION) && (move.flag != PROMOTION)) //not a promotion
+                return move;
+            
+            //a promotion, use 5th char
+            char promotion_char = str_move[4];
+            ColoredPieceType promotion_piece;
+            if(promotion_char == 'q' || promotion_char == 'Q'){
+                promotion_piece = side_to_move == WHITE ? WHITE_QUEEN : BLACK_QUEEN;
+            } else if (promotion_char == 'r' || promotion_char == 'R'){
+                promotion_piece = side_to_move == WHITE ? WHITE_ROOK : BLACK_ROOK;
+            } else if (promotion_char == 'b' || promotion_char == 'B'){
+                promotion_piece = side_to_move == WHITE ? WHITE_BISHOP : BLACK_BISHOP;
+            } else {
+                promotion_piece = side_to_move == WHITE ? WHITE_KNIGHT : BLACK_KNIGHT;
+            }
+
+            move.promotion_piece = promotion_piece;
+            return move;
+        }
+    }
+
+
+    //invalid call - recursive call
+    std::cerr << "ERROR: could not parse UCI move '" << str_move << "'" << std::endl;
+    return Move{};
+}
+
+std::string Board::move_to_uci(const Move& move){
+    std::string str_move;
+    str_move += 'a' + (move.from / 8);
+    str_move += '1' + (move.from % 8);
+    str_move += 'a' + (move.to / 8);
+    str_move += '1' + (move.to % 8);
+
+    if(move.flag != PROMOTION && move.flag != CAPTURE_PROMOTION)
+        return str_move;
+    
+    switch (move.promotion_piece)
+    {
+    case BLACK_QUEEN:
+    case WHITE_QUEEN:
+        str_move += 'q';
+        return str_move;
+    case BLACK_BISHOP:
+    case WHITE_BISHOP:
+        str_move += 'b';
+        return str_move;
+    case BLACK_ROOK:
+    case WHITE_ROOK:
+        str_move += 'r';
+        return str_move;
+    default:
+        str_move += 'n';
+        return str_move;
+    }
 }
 
 Move Board::get_user_move(){
@@ -1008,5 +1119,35 @@ void Board::play_game(){
         break;
     default:
         std::cout << "\n\nGAME IS STILL RUNNING FOR SOME REASON?!?!" << std::endl;
+    }
+}
+
+void Board::play_uci_game(){
+    std::string line;
+    while(std::getline(std::cin, line)){
+        if(line == "uci"){
+            std::cout << "id name YoramEngine" << std::endl;
+            std::cout << "id author Yoram" << std::endl;
+            std::cout << "uciok" << std::endl;
+        } else if (line == "isready"){
+            std::cout << "readyok" << std::endl;
+        } else if (line.substr(0, 17) == "position startpos") { //"position startpos move e4e3 move f2g4 move..."
+            setup_start_position();
+
+            std::stringstream ss(line);
+            std::string move_keyword, move_string, dummy;
+            ss >> dummy >> dummy >> move_keyword; //skip first 2 words (which are "position startpos")
+            if(move_keyword == "moves"){
+                while(ss >> move_string){
+                    Move move = uci_to_move(move_string);
+                    make_move(move, states[0]);
+                }
+            }
+        } else if (line.substr(0, 2) == "go"){
+            Move best = search_best_move();
+            std::cout << "bestmove " << move_to_uci(best) << std::endl;
+        } else if (line == "quit"){
+            break;
+        }
     }
 }

@@ -6,6 +6,7 @@
 
 constexpr int MAX_MOVES = 256;
 constexpr int MAX_DEPTH = 32;
+constexpr int PIECE_VALUES[] = {100, 320, 330, 500, 900, 10000, 100, 320, 330, 500, 900, 10000, 100}; //NONE_SQUARE gets the value of a pawn, used in en-passant
 
 enum Color : std::uint8_t {WHITE, BLACK};
 //enum PieceType {PAWN, KNIGHT, BISHOP, QUEEN, KING, NONE};

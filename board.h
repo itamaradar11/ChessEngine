@@ -20,6 +20,9 @@ public:
     Move search_best_move();
     int score_board();
     void play_game();
+    Move uci_to_move(const std::string& str_move);
+    std::string move_to_uci(const Move& move);
+    void play_uci_game();
 
     friend class MoveGenerator;
 
@@ -37,11 +40,12 @@ private:
     int full_moves;
     Color engine_color;
     StateInfo states[MAX_DEPTH];
+    Move best_moves[MAX_DEPTH][MAX_DEPTH];
 
-    ColoredPieceType get_piece_at(Square sq);
-    ColoredPieceType get_piece_at(Square sq, Color color);
-    int search_max(int depth, int alpha, int beta);
-    int search_min(int depth, int alpha, int beta);
+    ColoredPieceType get_piece_at(Square sq) const;
+    ColoredPieceType get_piece_at(Square sq, Color color) const;
+    int search_max(int depth, int alpha, int beta, int level);
+    int search_min(int depth, int alpha, int beta, int level);
     GamePhase get_game_phase();
     Move get_user_move();
     void ask_user_color();
